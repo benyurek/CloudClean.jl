@@ -300,6 +300,8 @@ function proc_discrete(x_locs,y_locs,raw_image,mask_image;Np=33,widx=129,widy=wi
     Threads.@threads for jx in 1:tilex
         for jy in 1:tiley
 
+            println("###iteration $jx, $jy###")
+
         
             # calculate the x/y ranges and star indices in the tile
             xrng, yrng, star_ind = im_subrng(jx,jy,cx,cy,sx0+2,sy0+2,px0,py0,stepx,stepy,padx,pady,tilex,tiley)
