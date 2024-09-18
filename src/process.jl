@@ -1,5 +1,5 @@
 using StatsBase
-
+using Base.Threads
 export proc_continuous
 export proc_discrete
 
