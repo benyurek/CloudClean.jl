@@ -294,56 +294,96 @@ function proc_discrete(x_locs,y_locs,raw_image,mask_image;Np=33,widx=129,widy=wi
     else
         zeros(T,stepx+2*padx-2*Δx,stepy+2*pady-2*Δy,2*Np-1, Np);
     end
-    for jx=1:tilex, jy=1:tiley
-        xrng, yrng, star_ind = im_subrng(jx,jy,cx,cy,sx0+2,sy0+2,px0,py0,stepx,stepy,padx,pady,tilex,tiley)
-        cntStar = length(star_ind)
-        if cntStar > 0
-            in_subimage .= in_image[xrng,yrng]
-            if sym
-                cov_avg_sym!(bimage, ism, bism, in_subimage, widx=widx, widy=widy,Np=Np)
-            else
-                cov_avg!(bimage, ism, bism, in_subimage, widx=widx, widy=widy,Np=Np)
-            end
-            offx = padx-Δx-(jx-1)*stepx
-            offy = pady-Δy-(jy-1)*stepy
-            for i in star_ind
-                if sym
-                    build_cov_sym!(cov,μ,cx[i]+offx,cy[i]+offy,bimage,bism,Np,widx,widy)
-                else
-                    build_cov!(cov,μ,cx[i]+offx,cy[i]+offy,bimage,bism,Np,widx,widy)
-                end
-                cov_stamp = cx[i]-radNp:cx[i]+radNp,cy[i]-radNp:cy[i]+radNp
-                    
-                kmasked2d = in_bmaskd[cov_stamp[1],cov_stamp[2]]
-                kstar, kcond = gen_pix_mask_circ(kmasked2d,circmask;Np=Np)
-                data_in = in_image_raw[cov_stamp[1],cov_stamp[2]]
 
-                # try
-                    stat_out = condCovEst_wdiag(cov,μ,kstar,data_in,Np=Np,export_mean=true,n_draw=ndraw,seed=seed)
-                    
-                    data_in[kstar].=stat_out[1][kstar]
-                    in_image_raw[cov_stamp[1],cov_stamp[2]].=data_in
-                    
-                    data_in = out_mean[cov_stamp[1],cov_stamp[2]]
-                    data_in[kstar].=stat_out[1][kstar]
-                    out_mean[cov_stamp[1],cov_stamp[2]].=data_in
-                    for i=1:ndraw
-                        draw_in = out_draw[cov_stamp[1],cov_stamp[2],i]
-                        draw_in[kstar].= stat_out[2][kstar,i]
-                        out_draw[cov_stamp[1],cov_stamp[2],i].=draw_in
+
+    # iterates over each of the tiles in an image
+    @threads for jx in 1:tilex
+        @threads for jy in 1:tiley
+        
+            # calculate the x/y ranges and star indices in the tile
+            xrng, yrng, star_ind = im_subrng(jx,jy,cx,cy,sx0+2,sy0+2,px0,py0,stepx,stepy,padx,pady,tilex,tiley)
+        
+            # cnt star = number of stars in tile 
+            cntStar = length(star_ind)
+        
+            # if there are stars in the tile proceed
+            if cntStar > 0
+            
+                # extract subimage of tile
+                in_subimage .= in_image[xrng,yrng]
+            
+                # compute covariance 
+                if sym
+                    cov_avg_sym!(bimage, ism, bism, in_subimage, widx=widx, widy=widy,Np=Np)
+                else
+                    cov_avg!(bimage, ism, bism, in_subimage, widx=widx, widy=widy,Np=Np)
+                end
+            
+                # compute offsets
+                offx = padx-Δx-(jx-1)*stepx
+                offy = pady-Δy-(jy-1)*stepy
+            
+                # loop through each star in the tile
+                for i in star_ind
+                
+                    # build cov matrix for star?
+                    if sym
+                        build_cov_sym!(cov,μ,cx[i]+offx,cy[i]+offy,bimage,bism,Np,widx,widy)
+                    else
+                        build_cov!(cov,μ,cx[i]+offx,cy[i]+offy,bimage,bism,Np,widx,widy)
                     end
-                    kmasked2d[kstar].=false
-                    in_bmaskd[cov_stamp[1],cov_stamp[2]].=kmasked2d
-                    cntStar0 += cntStar
-                # catch
-                #     println("Positive Definite Error")
-                # end
+                
+                    # Define stamp?
+                    cov_stamp = cx[i]-radNp:cx[i]+radNp,cy[i]-radNp:cy[i]+radNp
+                    
+                    # Generate mask
+                    kmasked2d = in_bmaskd[cov_stamp[1],cov_stamp[2]]
+                    kstar, kcond = gen_pix_mask_circ(kmasked2d,circmask;Np=Np)
+                
+                    # extract raw image data?
+                    data_in = in_image_raw[cov_stamp[1],cov_stamp[2]]
+                  
+                    # try
+                        # perform statistical estimation?
+                        stat_out = condCovEst_wdiag(cov,μ,kstar,data_in,Np=Np,export_mean=true,n_draw=ndraw,seed=seed)
+                    
+                        # Update with results
+                        data_in[kstar].=stat_out[1][kstar]
+                        in_image_raw[cov_stamp[1],cov_stamp[2]].=data_in
+                        data_in = out_mean[cov_stamp[1],cov_stamp[2]]
+                        data_in[kstar].=stat_out[1][kstar]
+                        out_mean[cov_stamp[1],cov_stamp[2]].=data_in
+                    
+                        for i=1:ndraw
+                            draw_in = out_draw[cov_stamp[1],cov_stamp[2],i]
+                            draw_in[kstar].= stat_out[2][kstar,i]
+                            out_draw[cov_stamp[1],cov_stamp[2],i].=draw_in
+                        end
+                    
+                        # Update mask
+                        kmasked2d[kstar].=false
+                        in_bmaskd[cov_stamp[1],cov_stamp[2]].=kmasked2d
+                    
+                        # Increment star count
+                        cntStar0 += cntStar
+                    # catch
+                    #     println("Positive Definite Error")
+                    # end
+                end
             end
+        
+        
+            cntStar0 += cntStar
+            println("Finished $cntStar stars in tile ($jx, $jy)")
+            flush(stdout)
+
+            
+            
+        
         end
-        cntStar0 += cntStar
-        println("Finished $cntStar stars in tile ($jx, $jy)")
-        flush(stdout)
     end
+
+    
     if ndraw>0
         return mod_im[1].-out_mean[1:sx0, 1:sy0], mod_im[1].-out_draw[1:sx0, 1:sy0, :]
     else
